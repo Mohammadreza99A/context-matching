@@ -2,6 +2,7 @@ mod context;
 mod fishing_context;
 mod geometry;
 mod observation;
+mod random_generator;
 
 use context::ContextState;
 use fishing_context::FishingContext;
@@ -14,8 +15,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() != 3 {
-        println!("Bad number of arguments: <input_csv_file_path> <output_result_path>");
-        std::process::exit(1);
+        return Err("Bad number of arguments: <input_csv_file_path> <output_result_path>".into());
     }
 
     println!("Reading and parsing input CSV file...");
@@ -27,12 +27,14 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         observations: observations.clone(),
         nb_of_particles: 100,
         samples: Vec::new(),
-        sigma: 100.0f64,
-        alpha: 100000.0f64,
+        sigma: 5.0,
+        alpha: 1.0,
+        sailing_normal_speed_distr: (3.31, 1.19),
+        fishing_normal_speed_distr: (1.36, 0.89),
     };
     let states: Vec<ContextState> = ctx.particle_filter();
     let duration = start.elapsed();
-    println!("Particle filtering took {:?} milliseconds", duration);
+    println!("Particle filtering took {:?}", duration);
 
     println!("Analyzing results...");
     let mut correct_context: u32 = 0;
@@ -45,8 +47,10 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         }
     }
     println!(
-        "Context --> correct: {}, false: {}",
-        correct_context, false_context
+        "Context --> correct: {}, false: {}. Success rate: {}",
+        correct_context,
+        false_context,
+        correct_context as f32 / (correct_context + false_context) as f32
     );
 
     println!("Writing result to output file...");
