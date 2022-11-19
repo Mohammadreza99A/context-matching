@@ -51,6 +51,7 @@ class Observation:
 
 class FishingContext:
     observations: list[Observation]
+    samples: list[ContextState]
     nb_of_particles: int
     sigma: float
     alpha: float
@@ -61,13 +62,13 @@ class FishingContext:
                  sigma: float,
                  alpha: float) -> None:
         self.observations = observations
+        self.samples = []
         self.nb_of_particles = number_of_particles
         self.sigma = sigma
         self.alpha = alpha
 
     def particle_filter(self) -> list[ContextState]:
         res_states: list[ContextState] = []
-        samples: list[ContextState] = []
 
         # Generate first sample
         for _ in range(self.nb_of_particles):
@@ -78,25 +79,23 @@ class FishingContext:
                 ContextType.SAILING)
             updated_state: ContextState = self.update(
                 state, self.observations[1].time)
-            samples.append(updated_state)
+            self.samples.append(updated_state)
 
         # Generate samples for each observation
         for i in range(len(self.observations)-1):
-            samples = self.updates(samples, self.observations[i+1].time)
+            self.samples = self.updates(self.observations[i+1].time)
             weights: list[float] = self.importance_sampling(
-                samples, self.observations[i+1])
+                self.observations[i+1])
             max_arg_index: int = weights.index(max(weights))
-            res_states.append(samples[max_arg_index])
-            samples = self.resample(samples, weights)
+            res_states.append(self.samples[max_arg_index])
+            self.samples = self.resample(weights)
         return res_states
 
-    def updates(self,
-                samples: list[ContextState],
-                time_diff: int) -> list[ContextState]:
+    def updates(self, time_diff: int) -> list[ContextState]:
         new_samples: list[ContextState] = []
 
-        for i in range(len(samples)):
-            new_samples.append(self.update(samples[i], time_diff))
+        for i in range(len(self.samples)):
+            new_samples.append(self.update(self.samples[i], time_diff))
 
         return new_samples
 
@@ -138,18 +137,16 @@ class FishingContext:
         return ContextState(new_pos, new_dir, new_heading,
                             new_speed, new_context)
 
-    def importance_sampling(self, states: list[ContextState],
-                            observation: Observation) -> list[float]:
+    def importance_sampling(self, observation: Observation) -> list[float]:
         weighted_samples: list[float] = []
 
-        for state in states:
+        for state in self.samples:
             weighted_samples.append(
                 self.alpha * self.calc_emission_prob(observation, state))
 
         return weighted_samples
 
-    def resample(self, states: list[ContextState],
-                 weights: list[float]) -> list[ContextState]:
+    def resample(self, weights: list[float]) -> list[ContextState]:
         T: float = 0
         new_samples: list[ContextState] = []
         k: list[float] = [0 for _ in range(len(weights))]
@@ -164,7 +161,7 @@ class FishingContext:
             j: int = 0
             while (k[j] < t):
                 j += 1
-            new_samples.append(states[j])
+            new_samples.append(self.samples[j])
 
         return new_samples
 
