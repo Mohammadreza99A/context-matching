@@ -8,16 +8,37 @@ use crate::{
 
 #[derive(Debug)]
 pub struct FishingContext {
-    pub observations: Vec<Observation>,
-    pub nb_of_particles: u16,
-    pub samples: Vec<ContextState>,
-    pub sigma: f64,
-    pub alpha: f64,
-    pub sailing_normal_speed_distr: (f64, f64),
-    pub fishing_normal_speed_distr: (f64, f64),
+    observations: Vec<Observation>,
+    nb_of_particles: u16,
+    samples: Vec<ContextState>,
+    sigma: f64,
+    sailing_normal_speed_distr: (f64, f64),
+    fishing_normal_speed_distr: (f64, f64),
+    context_window: Vec<(u16, u16)>, // (# of sailings, # of fishings)
+    context_window_size: usize,
 }
 
 impl FishingContext {
+    pub fn new(
+        observations: &[Observation],
+        nb_of_particles: u16,
+        sigma: f64,
+        sailing_normal_speed_distr: (f64, f64),
+        fishing_normal_speed_distr: (f64, f64),
+        context_window_size: usize,
+    ) -> FishingContext {
+        FishingContext {
+            observations: observations.to_vec(),
+            nb_of_particles: nb_of_particles,
+            samples: Vec::new(),
+            sigma: sigma,
+            sailing_normal_speed_distr: sailing_normal_speed_distr,
+            fishing_normal_speed_distr: fishing_normal_speed_distr,
+            context_window: Vec::new(),
+            context_window_size: context_window_size,
+        }
+    }
+
     pub fn particle_filter(&mut self) -> Vec<ContextState> {
         let mut res_states: Vec<ContextState> = Vec::new();
 
@@ -44,9 +65,13 @@ impl FishingContext {
         for i in 0..self.observations.len() - 1 {
             self.updates(self.observations[i], self.observations[i + 1].time);
             let weights: Vec<f64> = self.importance_sampling(&self.observations[i + 1]);
-            let max_weight: f64 = weights.iter().copied().fold(f64::NAN, f64::max);
-            let max_weight_index: usize = weights.iter().position(|&r| r == max_weight).unwrap();
+            let max_weight_index = self.find_max_weight_index(weights.as_slice());
             res_states.push(self.samples[max_weight_index]);
+            if self.context_window.len() >= self.context_window_size {
+                let ctx = self.select_context_from_window(self.samples[max_weight_index].context);
+                let index = res_states.len() - (self.context_window_size / 2);
+                res_states[index].context = ctx;
+            }
             self.resample(weights.as_slice());
         }
 
@@ -55,11 +80,26 @@ impl FishingContext {
 
     fn updates(&mut self, observation: Observation, time_diff: f64) {
         let mut new_samples: Vec<ContextState> = Vec::new();
+        let mut sailing_context_count: u16 = 0;
+        let mut fishing_context_count: u16 = 0;
 
         for sample in &self.samples {
-            new_samples.push(self.update(observation, &sample, time_diff));
+            let updated_sample: ContextState = self.update(observation, &sample, time_diff);
+            new_samples.push(updated_sample);
+
+            match sample.context {
+                ContextType::SAILING => sailing_context_count += 1,
+                ContextType::FISHING => fishing_context_count += 1,
+            }
         }
 
+        let context_window_elem = (sailing_context_count, fishing_context_count);
+        if self.context_window.len() < self.context_window_size {
+            self.context_window.push(context_window_elem);
+        } else {
+            self.context_window.drain(0..1);
+            self.context_window.push(context_window_elem);
+        }
         self.samples = new_samples;
     }
 
@@ -128,7 +168,7 @@ impl FishingContext {
         let mut weighted_samples: Vec<f64> = Vec::new();
 
         for state in &self.samples {
-            weighted_samples.push(self.alpha * self.calc_emission_prob(observation, &state))
+            weighted_samples.push(self.calc_emission_prob(observation, &state))
         }
 
         weighted_samples
@@ -158,6 +198,45 @@ impl FishingContext {
         }
 
         self.samples = new_samples;
+    }
+
+    fn select_context_from_window(&mut self, current_context: ContextType) -> ContextType {
+        let mid_index = self.context_window_size / 2;
+
+        let mut left_hand_sailing = 0;
+        let mut left_hand_fishing = 0;
+        let mut right_hand_sailing = 0;
+        let mut right_hand_fishing = 0;
+
+        for i in 0..mid_index {
+            left_hand_sailing += self.context_window[i].0;
+            left_hand_fishing += self.context_window[i].1;
+        }
+
+        for i in mid_index + 1..self.context_window_size {
+            right_hand_sailing += self.context_window[i].0;
+            right_hand_fishing += self.context_window[i].1;
+        }
+
+        let sailing_total = left_hand_sailing + right_hand_sailing;
+        let fishing_total = left_hand_fishing + right_hand_fishing;
+
+        if sailing_total > fishing_total {
+            if self.context_window[mid_index].0 >= 50 {
+                return ContextType::SAILING;
+            }
+        } else {
+            if self.context_window[mid_index].1 >= 50 {
+                return ContextType::FISHING;
+            }
+        }
+
+        current_context
+    }
+
+    fn find_max_weight_index(&self, weights: &[f64]) -> usize {
+        let max_weight: f64 = weights.iter().copied().fold(f64::NAN, f64::max);
+        weights.iter().position(|&r| r == max_weight).unwrap()
     }
 
     fn calc_emission_prob(&self, observation: &Observation, state: &ContextState) -> f64 {

@@ -23,15 +23,14 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     println!("Particle filtering...");
     let start = Instant::now();
-    let mut ctx: FishingContext = FishingContext {
-        observations: observations.clone(),
-        nb_of_particles: 100,
-        samples: Vec::new(),
-        sigma: 5.0,
-        alpha: 1.0,
-        sailing_normal_speed_distr: (3.31, 1.19),
-        fishing_normal_speed_distr: (1.36, 0.89),
-    };
+    let mut ctx = FishingContext::new(
+        observations.as_slice(),
+        100,
+        5.0,
+        (3.31, 1.19),
+        (1.36, 0.89),
+        51,
+    );
     let states: Vec<ContextState> = ctx.particle_filter();
     let duration = start.elapsed();
     println!("Particle filtering took {:?}", duration);
