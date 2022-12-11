@@ -14,8 +14,8 @@ pub struct FishingContext {
     sigma: f64,
     sailing_normal_speed_distr: (f64, f64),
     fishing_normal_speed_distr: (f64, f64),
-    context_window: Vec<(u16, u16)>, // (# of sailings, # of fishings)
-    context_window_size: usize,
+    context_smoothing_window: Vec<(u16, u16)>, // (# of sailings, # of fishings)
+    context_smoothing_window_size: usize,
 }
 
 impl FishingContext {
@@ -34,8 +34,8 @@ impl FishingContext {
             sigma: sigma,
             sailing_normal_speed_distr: sailing_normal_speed_distr,
             fishing_normal_speed_distr: fishing_normal_speed_distr,
-            context_window: Vec::new(),
-            context_window_size: context_window_size,
+            context_smoothing_window: Vec::new(),
+            context_smoothing_window_size: context_window_size,
         }
     }
 
@@ -67,9 +67,9 @@ impl FishingContext {
             let weights: Vec<f64> = self.importance_sampling(&self.observations[i + 1]);
             let max_weight_index = self.find_max_weight_index(weights.as_slice());
             res_states.push(self.samples[max_weight_index]);
-            if self.context_window.len() >= self.context_window_size {
-                let ctx = self.select_context_from_window(self.samples[max_weight_index].context);
-                let index = res_states.len() - (self.context_window_size / 2);
+            if self.context_smoothing_window.len() >= self.context_smoothing_window_size {
+                let ctx = self.smooth_context(self.samples[max_weight_index].context);
+                let index = res_states.len() - (self.context_smoothing_window_size / 2);
                 res_states[index].context = ctx;
             }
             self.resample(weights.as_slice());
@@ -94,11 +94,11 @@ impl FishingContext {
         }
 
         let context_window_elem = (sailing_context_count, fishing_context_count);
-        if self.context_window.len() < self.context_window_size {
-            self.context_window.push(context_window_elem);
+        if self.context_smoothing_window.len() < self.context_smoothing_window_size {
+            self.context_smoothing_window.push(context_window_elem);
         } else {
-            self.context_window.drain(0..1);
-            self.context_window.push(context_window_elem);
+            self.context_smoothing_window.drain(0..1);
+            self.context_smoothing_window.push(context_window_elem);
         }
         self.samples = new_samples;
     }
@@ -200,8 +200,8 @@ impl FishingContext {
         self.samples = new_samples;
     }
 
-    fn select_context_from_window(&mut self, current_context: ContextType) -> ContextType {
-        let mid_index = self.context_window_size / 2;
+    fn smooth_context(&mut self, current_context: ContextType) -> ContextType {
+        let mid_index = self.context_smoothing_window_size / 2;
 
         let mut left_hand_sailing = 0;
         let mut left_hand_fishing = 0;
@@ -209,24 +209,24 @@ impl FishingContext {
         let mut right_hand_fishing = 0;
 
         for i in 0..mid_index {
-            left_hand_sailing += self.context_window[i].0;
-            left_hand_fishing += self.context_window[i].1;
+            left_hand_sailing += self.context_smoothing_window[i].0;
+            left_hand_fishing += self.context_smoothing_window[i].1;
         }
 
-        for i in mid_index + 1..self.context_window_size {
-            right_hand_sailing += self.context_window[i].0;
-            right_hand_fishing += self.context_window[i].1;
+        for i in mid_index + 1..self.context_smoothing_window_size {
+            right_hand_sailing += self.context_smoothing_window[i].0;
+            right_hand_fishing += self.context_smoothing_window[i].1;
         }
 
         let sailing_total = left_hand_sailing + right_hand_sailing;
         let fishing_total = left_hand_fishing + right_hand_fishing;
 
         if sailing_total > fishing_total {
-            if self.context_window[mid_index].0 >= 50 {
+            if self.context_smoothing_window[mid_index].0 >= 50 {
                 return ContextType::SAILING;
             }
         } else {
-            if self.context_window[mid_index].1 >= 50 {
+            if self.context_smoothing_window[mid_index].1 >= 50 {
                 return ContextType::FISHING;
             }
         }
