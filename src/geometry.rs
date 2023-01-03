@@ -11,4 +11,8 @@ impl Point {
         let f = self.x.powf(2.0) + self.y.powf(2.0);
         f.sqrt()
     }
+
+    pub fn scaled_weighted_distance_from_line(distance: f64, d0: f64, c: f64) -> f64 {
+        1.0f64 - (c * (-distance / d0).exp())
+    }
 }

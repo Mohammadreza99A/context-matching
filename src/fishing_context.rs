@@ -67,11 +67,11 @@ impl FishingContext {
             let weights: Vec<f64> = self.importance_sampling(&self.observations[i + 1]);
             let max_weight_index = self.find_max_weight_index(weights.as_slice());
             res_states.push(self.samples[max_weight_index]);
-            if self.context_smoothing_window.len() >= self.context_smoothing_window_size {
-                let ctx = self.smooth_context(self.samples[max_weight_index].context);
-                let index = res_states.len() - (self.context_smoothing_window_size / 2);
-                res_states[index].context = ctx;
-            }
+            // if self.context_smoothing_window.len() >= self.context_smoothing_window_size {
+            //     let ctx = self.smooth_context(self.samples[max_weight_index].context);
+            //     let index = res_states.len() - (self.context_smoothing_window_size / 2);
+            //     res_states[index].context = ctx;
+            // }
             self.resample(weights.as_slice());
         }
 
@@ -168,7 +168,18 @@ impl FishingContext {
         let mut weighted_samples: Vec<f64> = Vec::new();
 
         for state in &self.samples {
-            weighted_samples.push(self.calc_emission_prob(observation, &state))
+            let mut weight = self.calc_emission_prob(observation, &state);
+
+            if state.context == ContextType::FISHING {
+                let scaled_distance_from_shore = Point::scaled_weighted_distance_from_line(
+                    observation.distance_to_shore,
+                    self.observations[0].distance_to_shore,
+                    1.0f64,
+                );
+                weight = weight * scaled_distance_from_shore;
+            }
+
+            weighted_samples.push(weight);
         }
 
         weighted_samples

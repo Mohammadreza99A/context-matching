@@ -7,6 +7,7 @@ pub struct Observation {
     pub pos: Point,
     pub time: f64,
     pub context: ContextType,
+    pub distance_to_shore: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -45,6 +46,7 @@ impl Observation {
                 } else {
                     ContextType::SAILING
                 },
+                distance_to_shore: record.distanceToShore,
             };
             observations.push(obs);
         }
