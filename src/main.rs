@@ -1,12 +1,12 @@
-mod context;
 mod fishing_context;
 mod geometry;
 mod observation;
+mod particle;
 mod random_generator;
 
-use context::ContextState;
 use fishing_context::FishingContext;
 use observation::Observation;
+use particle::Particle;
 use std::env;
 use std::error;
 use std::time::Instant;
@@ -29,9 +29,8 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         5.0,
         (3.31, 1.19),
         (1.36, 0.89),
-        51,
     );
-    let states: Vec<ContextState> = ctx.particle_filter();
+    let states: Vec<Particle> = ctx.particle_filter();
     let duration = start.elapsed();
     println!("Particle filtering took {:?}", duration);
 

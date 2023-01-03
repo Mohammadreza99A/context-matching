@@ -1,4 +1,4 @@
-use crate::context::ContextType;
+use crate::particle::ParticleContextType;
 use crate::geometry::Point;
 use serde::Deserialize;
 
@@ -6,7 +6,9 @@ use serde::Deserialize;
 pub struct Observation {
     pub pos: Point,
     pub time: f64,
-    pub context: ContextType,
+    pub heading: f64,
+    pub speed: f64,
+    pub context: ParticleContextType,
     pub distance_to_shore: f64,
 }
 
@@ -41,10 +43,12 @@ impl Observation {
                     y: record.y,
                 },
                 time: record.time_gap,
+                heading: record.bearing,
+                speed: record.euc_speed,
                 context: if record.label.contains("fishing") {
-                    ContextType::FISHING
+                    ParticleContextType::FISHING
                 } else {
-                    ContextType::SAILING
+                    ParticleContextType::SAILING
                 },
                 distance_to_shore: record.distanceToShore,
             };
