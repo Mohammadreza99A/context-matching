@@ -34,20 +34,23 @@ impl FishingContext {
         }
     }
 
-    pub fn particle_filter(&mut self) -> Vec<Particle> {
-        let mut res_states: Vec<Particle> = Vec::new();
-
+    pub fn particle_filter(&mut self) -> Vec<Observation> {
         // Generate initial particles
-        for _ in 0..self.nb_of_particles {
+        for _i in 0..self.nb_of_particles {
             let mut random_context = ParticleContextType::SAILING;
-            if (random_uniform() > 0.5) {
+            if random_uniform() > 0.5 {
                 random_context = ParticleContextType::FISHING;
             }
-            let particle: Particle = Particle {
+            // if i > self.nb_of_particles / 2 {
+            //     random_context = ParticleContextType::FISHING;
+            // }
+            let mut particle: Particle = Particle {
                 pos: self.observations[0].pos,
                 direction: Point {
-                    x: random_uniform(),
-                    y: random_uniform(),
+                    x: self.observations[0].heading.sin(),
+                    // x: random_uniform(),
+                    y: self.observations[0].heading.cos(),
+                    // y: random_uniform(),
                 },
                 heading: self.observations[0].heading,
                 speed: self.observations[0].speed,
@@ -55,22 +58,20 @@ impl FishingContext {
                 weight: 1.0 / self.nb_of_particles as f64,
                 memory: Vec::new(),
             };
+            particle.memory.push(random_context);
             self.particles.push(particle);
         }
 
-        // self.particle_filter_steps(self.observations[1]);
         for i in 1..self.observations.len() {
             self.particle_filter_steps(self.observations[i]);
         }
-        // println!("{:#?}", self.particles);
 
-        res_states
+        self.calc_optimal_sequence()
     }
 
     fn particle_filter_steps(&mut self, observation: Observation) {
         // Sampling
-        let resampled_particles = self.resample();
-        self.particles = resampled_particles;
+        self.particles = self.resample();
 
         // Update/Drift & Diffuse
         for i in 0..self.particles.len() {
@@ -83,20 +84,22 @@ impl FishingContext {
                 }
             }
             self.particles[i].context = new_context;
+            self.particles[i].memory.push(new_context);
 
             // Applying the motion model to generate new particle based on
             // previous one and drawn sample context-state above
-            let new_particle = self.update(observation, &self.particles[i]);
-            self.particles[i] = new_particle;
+            self.particles[i] = self.update(observation, &self.particles[i]);
         }
 
-        // Measuring or importance weight
-        let weighted_new_particles = self.importance_sampling(&observation);
-        self.particles = weighted_new_particles;
-
-        // Resampling
-        let resampled_new_particles = self.resample();
-        self.particles = resampled_new_particles;
+        // Assigning weights
+        self.particles = self.importance_sampling(&observation);
+        let mut weight_normalization: f64 = 0.0;
+        for i in 0..self.particles.len() {
+            weight_normalization += self.particles[i].weight;
+        }
+        for i in 0..self.particles.len() {
+            self.particles[i].weight = self.particles[i].weight / weight_normalization;
+        }
     }
 
     fn resample(&mut self) -> Vec<Particle> {
@@ -131,10 +134,15 @@ impl FishingContext {
         // Update heading
         // randomly  (uniform) chosen from -0.4 to +0.4 radians
         // (appx 22.91 degree) from previous heading
-        let new_heading = random_uniform_range(particle.heading - 22.91, particle.heading + 22.91);
-        // if new_heading > 360.0 || new_heading < 0.0 {
-        //     println!("{:#?}", new_heading)
-        // }
+        let mut heading_low = particle.heading - 22.91;
+        let mut heading_high = particle.heading + 22.91;
+        if heading_low < 0.0 {
+            heading_low = particle.heading;
+        }
+        if heading_high > 360.0 {
+            heading_high = particle.heading;
+        }
+        let new_heading = random_uniform_range(heading_low, heading_high);
 
         // Update speed
         // The speed is set according to the context
@@ -160,10 +168,10 @@ impl FishingContext {
         new_dir.x = new_dir.x * norm;
         new_dir.y = new_dir.y * norm;
         let new_pos = Point {
-            // x: sample.pos.x + (new_speed * time_diff * new_dir.x),
-            x: observation.pos.x + (new_speed * time_diff * new_dir.x),
-            // y: sample.pos.y + (new_speed * time_diff * new_dir.y),
-            y: observation.pos.y + (new_speed * time_diff * new_dir.y),
+            x: particle.pos.x + (new_speed * time_diff * new_dir.x),
+            // x: observation.pos.x + (new_speed * time_diff * new_dir.x),
+            y: particle.pos.y + (new_speed * time_diff * new_dir.y),
+            // y: observation.pos.y + (new_speed * time_diff * new_dir.y),
         };
 
         Particle {
@@ -171,9 +179,9 @@ impl FishingContext {
             direction: new_dir,
             heading: new_heading,
             speed: new_speed,
-            weight: 0.0,
+            weight: particle.weight,
             context: particle.context,
-            memory: Vec::new(),
+            memory: particle.memory.clone(),
         }
     }
 
@@ -195,6 +203,49 @@ impl FishingContext {
         }
 
         weighted_particles
+    }
+
+    fn calc_optimal_sequence(&self) -> Vec<Observation> {
+        let mut optimal_sequence: Vec<Observation> = Vec::new();
+
+        for i in 0..self.observations.len() {
+            let mut obs_memory: Vec<ParticleContextType> = Vec::new();
+            for j in 0..self.particles.len() {
+                obs_memory.push(self.particles[j].memory[i]);
+            }
+            let majority_context: ParticleContextType =
+                self.get_majority_context(obs_memory.as_slice());
+
+            let obs_with_context = Observation {
+                pos: self.observations[i].pos,
+                time: self.observations[i].time,
+                heading: self.observations[i].heading,
+                speed: self.observations[i].speed,
+                context: majority_context,
+                distance_to_shore: self.observations[i].distance_to_shore,
+            };
+            optimal_sequence.push(obs_with_context);
+        }
+
+        optimal_sequence
+    }
+
+    fn get_majority_context(&self, obs_memory: &[ParticleContextType]) -> ParticleContextType {
+        let mut sailing_count: u8 = 0;
+        let mut fishing_count: u8 = 0;
+
+        for memory in obs_memory {
+            match memory {
+                ParticleContextType::SAILING => sailing_count += 1,
+                ParticleContextType::FISHING => fishing_count += 1,
+            }
+        }
+
+        if sailing_count >= fishing_count {
+            ParticleContextType::SAILING
+        } else {
+            ParticleContextType::FISHING
+        }
     }
 
     fn calc_emission_prob(&self, observation: &Observation, particle: &Particle) -> f64 {

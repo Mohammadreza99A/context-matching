@@ -6,7 +6,6 @@ mod random_generator;
 
 use fishing_context::FishingContext;
 use observation::Observation;
-use particle::Particle;
 use std::env;
 use std::error;
 use std::time::Instant;
@@ -30,7 +29,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         (3.31, 1.19),
         (1.36, 0.89),
     );
-    let states: Vec<Particle> = ctx.particle_filter();
+    let states: Vec<Observation> = ctx.particle_filter();
     let duration = start.elapsed();
     println!("Particle filtering took {:?}", duration);
 
@@ -54,15 +53,25 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     println!("Writing result to output file...");
     let mut wtr = csv::Writer::from_path(&args[2])?;
 
-    wtr.write_record(&["x", "y", "heading", "speed", "context"])?;
+    wtr.write_record(&[
+        "x",
+        "y",
+        "time",
+        "heading",
+        "speed",
+        "context",
+        "distanceToShore",
+    ])?;
 
     for state in states {
         wtr.serialize((
             state.pos.x,
             state.pos.y,
+            state.time,
             state.heading,
             state.speed,
             state.context,
+            state.distance_to_shore,
         ))?;
     }
 
