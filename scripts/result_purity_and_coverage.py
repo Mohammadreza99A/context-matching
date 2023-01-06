@@ -1,8 +1,9 @@
-from pandas import read_csv
+from pandas import read_csv, DataFrame
 import matplotlib.pyplot as plt
 import os
 import glob
 from sys import argv
+import numpy as np
 
 if (len(argv) != 3):
     print("Bad number of arguments: <input_obs_folder> <input_res_folder>")
@@ -11,183 +12,93 @@ if (len(argv) != 3):
 INPUT_OBS_FOLDER = argv[1]
 INPUT_RES_FOLDER = argv[2]
 
-total_process_files = 0
-success_rate_sum = 0
-
-all_res_files = glob.glob(os.path.join(INPUT_RES_FOLDER, "*.csv"))
-
 
 def calculate_purity(obs_df, res_df):
-    res_df_segmented = res_df.assign(segment_id=lambda x: (x['context'] != x['context'].shift(
-        1)).cumsum())
-
-    total_res_segments_count = res_df_segmented.iloc[len(
-        res_df_segmented)-1]['segment_id']
-    total_obs_segments_count = 3
-
-    obs_df_sailing_1 = obs_df[obs_df['label'] == "01-sailing"]
-    obs_df_fishing_2 = obs_df[obs_df['label'] == "02-fishing"]
-    obs_df_sailing_3 = obs_df[obs_df['label'] == "03-sailing"]
-
-    obs_segments = [obs_df_sailing_1, obs_df_fishing_2, obs_df_sailing_3]
-
     purity = 0
 
-    first_seg_index = obs_df_sailing_1.iloc[0].name
-    second_seg_index = obs_df_fishing_2.iloc[0].name
-    if len(obs_df_sailing_3) > 0:
-        third_seg_index = obs_df_sailing_3.iloc[0].name
+    segments_dict = {}
 
-    res_df_sailing_1 = res_df_segmented.loc[first_seg_index:second_seg_index]
-    res_df_fishing_2 = res_df_segmented.loc[second_seg_index +
-                                            1: third_seg_index]
-    if len(obs_df_sailing_3) > 0:
-        res_df_sailing_3 = res_df_segmented.loc[third_seg_index + 1:]
+    segments = res_df.assign(segment_id=lambda x: (x['context'] != x['context'].shift(
+        1)).cumsum())
 
-    # for i in range(total_res_segments_count):
-    #     segment_i = res_df_segmented[res_df_segmented["segment_id"] == i]
-    #     total_segment_points = len(segment_i)
+    segments_count = segments.iloc[len(segments) - 1]["segment_id"]
 
-    first_seg_sailing = len(
-        res_df_sailing_1[res_df_sailing_1["context"] == "SAILING"])
-    first_seg_fishing = len(
-        res_df_sailing_1[res_df_sailing_1["context"] == "FISHING"])
-    second_seg_sailing = len(
-        res_df_fishing_2[res_df_fishing_2["context"] == "SAILING"])
-    second_seg_fishing = len(
-        res_df_fishing_2[res_df_fishing_2["context"] == "FISHING"])
-    third_seg_sailing = len(
-        res_df_sailing_3[res_df_sailing_3["context"] == "SAILING"])
-    third_seg_fishing = len(
-        res_df_sailing_3[res_df_sailing_3["context"] == "FISHING"])
+    obs_fishing_indices = (obs_df[obs_df['label'] == "02-fishing"].iloc[0].name,
+                           obs_df[obs_df['label'] == "03-sailing"].iloc[0].name)
 
-    purity = (max(first_seg_sailing, first_seg_fishing) / len(res_df_sailing_1)) + \
-        (max(second_seg_sailing, second_seg_fishing) / len(res_df_fishing_2)) + \
-        (max(third_seg_sailing, third_seg_fishing) / len(res_df_sailing_3))
-    purity = purity / total_res_segments_count
+    row_counter = 0
+    for i in range(1, segments_count + 1):
+        segment_i = segments[segments["segment_id"] == i]
+        correct_labels_count = 0
 
-    print(purity)
+        segment_i_label = segment_i.iloc[0]["context"]
 
-    return purity
+        for _ in range(0, len(segment_i)):
+            if (row_counter >= obs_fishing_indices[0] and row_counter < obs_fishing_indices[1]):
+                if (segment_i_label == "FISHING"):
+
+                    correct_labels_count += 1
+            else:
+                if (segment_i_label == "SAILING"):
+                    correct_labels_count += 1
+
+            row_counter += 1
+
+        if correct_labels_count != 0:
+            purity += correct_labels_count / len(segment_i)
+            segments_dict[i] = [correct_labels_count,
+                                correct_labels_count / len(segment_i)]
+
+    return purity / len(segments_dict)
 
 
 def calculate_coverage(obs_df, res_df):
-    res_df_segmented = res_df.assign(segment_id=lambda x: (x['context'] != x['context'].shift(
+    coverage = 0
+
+    segments = res_df.assign(segment_id=lambda x: (x['context'] != x['context'].shift(
         1)).cumsum())
 
-    total_res_segments_count = res_df_segmented.iloc[len(
-        res_df_segmented)-1]['segment_id']
     total_obs_segments_count = 3
 
-    obs_df_sailing_1 = obs_df[obs_df['label'] == "01-sailing"]
-    obs_df_fishing_2 = obs_df[obs_df['label'] == "02-fishing"]
-    obs_df_sailing_3 = obs_df[obs_df['label'] == "03-sailing"]
+    fishing_indices = (obs_df[obs_df['label'] == "02-fishing"].iloc[0].name,
+                       obs_df[obs_df['label'] == "03-sailing"].iloc[0].name)
 
-    obs_segments = [obs_df_sailing_1, obs_df_fishing_2, obs_df_sailing_3]
+    fishing_segment = segments.iloc[fishing_indices[0]:fishing_indices[1]]
+    fishing_segment_correct_labels = len(
+        fishing_segment[fishing_segment["context"] == "FISHING"])
+    coverage += fishing_segment_correct_labels / len(fishing_segment)
 
-    total_coverage = 0
+    sailing_segment_1 = segments.iloc[0:fishing_indices[0]]
+    sailing_segment_1_correct_labels = len(
+        sailing_segment_1[sailing_segment_1["context"] == "SAILING"])
+    coverage += sailing_segment_1_correct_labels / len(sailing_segment_1)
 
-    for obs_segment in obs_segments:
-        segment_context = obs_segment.iloc[0]["label"]
-        if ("fishing" in segment_context):
-            segment_context = "FISHING"
-        else:
-            segment_context = "SAILING"
+    sailing_segment_2 = segments.iloc[fishing_indices[1]:len(segments)]
+    sailing_segment_2_correct_labels = len(
+        sailing_segment_2[sailing_segment_2["context"] == "SAILING"])
+    coverage += sailing_segment_2_correct_labels / len(sailing_segment_2)
 
-        # Find overlapping segments with this observation segment
-        begin_index = obs_segment.iloc[0].name
-        end_index = obs_segment.iloc[len(obs_segment)-1].name
-        overlapping_res_segments = res_df_segmented.loc[begin_index:end_index]
-
-        # Exclude points that do not have segment context as their context
-        res_segments_excluded = overlapping_res_segments[
-            overlapping_res_segments['context'] == segment_context]
-
-        # Find size of the longest discovered segment
-        longest_segment_size = res_segments_excluded.groupby(['segment_id'])[
-            'context'].count().max()
-
-        coverage = longest_segment_size / len(obs_segment)
-
-        total_coverage += coverage
-
-    coverage = total_coverage / total_obs_segments_count
-
-    print(coverage)
-
-    return coverage
+    return coverage / total_obs_segments_count
 
 
-def calculate_total_purity():
+def calculate_harmonic_mean(purity, coverage):
+    return (2*purity*coverage) / (purity + coverage)
+
+
+if __name__ == "__main__":
+    all_res_files = glob.glob(os.path.join(INPUT_RES_FOLDER, "*.csv"))
 
     total_purity = 0
-    processed_purities = 0
-
-    # for i in range(len(all_res_files)):
-    for i in range(1):
-        # file_path = all_res_files[i]
-        file_path = "AIS_trajs/res/219000855-4.csv"
-
-        file_name = os.path.basename(file_path)
-        # print(file_name)
-
-        obs_df = read_csv(os.path.join(
-            INPUT_OBS_FOLDER, file_name), delimiter=",")
-        res_df = read_csv(file_path, delimiter=",")
-
-        # calculate_purity(obs_df, res_df)
-        calculate_coverage(obs_df, res_df)
-
-        # obs_df_sailing_1 = obs_df[obs_df['label'] == "01-sailing"]
-        # obs_df_fishing_2 = obs_df[obs_df['label'] == "02-fishing"]
-        # obs_df_sailing_3 = obs_df[obs_df['label'] == "03-sailing"]
-
-        # first_seg_index = obs_df_sailing_1.iloc[0].name
-        # second_seg_index = obs_df_fishing_2.iloc[0].name
-        # if len(obs_df_sailing_3) > 0:
-        #     third_seg_index = obs_df_sailing_3.iloc[0].name
-
-        # res_df_segmented = res_df.assign(segment_id=lambda x: (x['context'] != x['context'].shift(
-        #     1)).cumsum())
-
-        # res_df_sailing_1 = res_df_segmented.loc[first_seg_index:second_seg_index]
-        # res_df_fishing_2 = res_df_segmented.loc[second_seg_index +
-        #                                         1: third_seg_index]
-        # if len(obs_df_sailing_3) > 0:
-        #     res_df_sailing_3 = res_df_segmented.loc[third_seg_index + 1:]
-
-        # sailing_1 = res_df_sailing_1[res_df_sailing_1['context'] == "SAILING"]
-        # fishing_2 = res_df_fishing_2[res_df_fishing_2['context'] == "FISHING"]
-        # sailing_3 = res_df_sailing_3[res_df_sailing_3['context'] == "SAILING"]
-
-        # sailing_1_purity = sailing_1.groupby(
-        #     ['segment_id'])['context'].count().max()
-        # fishing_2_purity = fishing_2.groupby(
-        #     ['segment_id'])['context'].count().max()
-        # sailing_3_purity = 0
-        # if len(obs_df_sailing_3) > 0:
-        #     sailing_3_purity = sailing_3.groupby(
-        #         ['segment_id'])['context'].count().max() / len(res_df_sailing_3)
-
-        # if (len(res_df_fishing_2) == 0):
-        #     pass
-        # else:
-        #     purity = sailing_1_purity / \
-        #         len(res_df_sailing_1) + fishing_2_purity / \
-        #         len(res_df_fishing_2) + sailing_3_purity
-        #     processed_purities += 1
-        # total_purity += purity / 3
-
-    # return total_purity / processed_purities
-    return total_purity
-
-
-def calculate_total_coverage():
     total_coverage = 0
-    processed_coverage = 0
+    total_hormonic_mean = 0
+
+    purities = []
+    coverages = []
+    harmonic_means = []
 
     for i in range(len(all_res_files)):
-        # for i in range(1):
+        # for i in range(10):
+        # file_path = "AIS_trajs/res/219001624-2.csv"
         file_path = all_res_files[i]
 
         file_name = os.path.basename(file_path)
@@ -196,45 +107,42 @@ def calculate_total_coverage():
             INPUT_OBS_FOLDER, file_name), delimiter=",")
         res_df = read_csv(file_path, delimiter=",")
 
-        obs_df_sailing_1 = obs_df[obs_df['label'] == "01-sailing"]
-        obs_df_fishing_2 = obs_df[obs_df['label'] == "02-fishing"]
-        obs_df_sailing_3 = obs_df[obs_df['label'] == "03-sailing"]
-
-        first_seg_index = obs_df_sailing_1.iloc[0].name
-        second_seg_index = obs_df_fishing_2.iloc[0].name
-        if len(obs_df_sailing_3) > 0:
-            third_seg_index = obs_df_sailing_3.iloc[0].name
-
-        res_df_segmented = res_df.assign(segment_id=lambda x: (x['context'] != x['context'].shift(
-            1)).cumsum())
-
-        res_df_sailing_1 = res_df_segmented.loc[first_seg_index:second_seg_index]
-        res_df_fishing_2 = res_df_segmented.loc[second_seg_index +
-                                                1: third_seg_index]
-        if len(obs_df_sailing_3) > 0:
-            res_df_sailing_3 = res_df_segmented.loc[third_seg_index + 1:]
-
-        sailing_1_coverage = res_df_sailing_1.groupby(
-            ['segment_id'])['context'].count().max()
-        fishing_2_coverage = res_df_fishing_2.groupby(
-            ['segment_id'])['context'].count().max()
-        sailing_3_coverage = 0
-        if len(obs_df_sailing_3) > 0:
-            sailing_3_coverage = res_df_sailing_3.groupby(
-                ['segment_id'])['context'].count().max() / len(res_df_sailing_3)
-
-        if (len(res_df_fishing_2) == 0):
-            pass
-        else:
-            coverage = sailing_1_coverage / \
-                len(res_df_sailing_1) + fishing_2_coverage / \
-                len(res_df_fishing_2) + sailing_3_coverage
-            processed_coverage += 1
+        purity = calculate_purity(obs_df, res_df)
+        coverage = calculate_coverage(obs_df, res_df)
+        harmonic_mean = calculate_harmonic_mean(purity, coverage)
+        purities.append(purity * 100)
+        coverages.append(coverage * 100)
+        harmonic_means.append(harmonic_mean * 100)
+        total_purity += purity
         total_coverage += coverage
+        total_hormonic_mean += harmonic_mean
 
-    return total_coverage
+    total_purity = total_purity / len(all_res_files)
+    total_coverage = total_coverage / len(all_res_files)
+    total_hormonic_mean = total_hormonic_mean / len(all_res_files)
 
+    print("Total purity is {}%".format(total_purity * 100))
+    print("Total coverage is {}%".format(total_coverage * 100))
+    print("Total harmonic mean is {}%".format(total_hormonic_mean * 100))
 
-if __name__ == "__main__":
-    print("Total purity is {}".format(calculate_total_purity()))
-    # print("Total coverage is {}".format(calculate_total_coverage()))
+    print("min purity is {} and max is {}".format(min(purities), max(purities)))
+    print("min coverage is {} and max is {}".format(
+        min(coverages), max(coverages)))
+    print("min harmonic is {} and max is {}".format(
+        min(harmonic_means), max(harmonic_means)))
+
+    df = DataFrame({"purities": purities, "coverages": coverages,
+                   "harmonic means": harmonic_means})
+    df.plot.density()
+    # df.plot.hist()
+    font = {'size': 15}
+    plt.rc('font', **font)
+    plt.rc('xtick', labelsize=18)
+    plt.rc('ytick', labelsize=18)
+    plt.rc('axes', labelsize=18)
+
+    plt.legend(loc="upper left")
+    plt.xticks(np.arange(35, 100+1, 5.0))
+    plt.yticks(np.arange(0, 1, 0.1))
+    plt.xlim(60, 102)
+    plt.show()
