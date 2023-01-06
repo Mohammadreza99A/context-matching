@@ -28,6 +28,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         5.0,
         (3.31, 1.19),
         (1.36, 0.89),
+        51
     );
     let states: Vec<Observation> = ctx.particle_filter();
     let duration = start.elapsed();
