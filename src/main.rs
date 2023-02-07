@@ -1,10 +1,9 @@
-mod context;
 mod fishing_context;
 mod geometry;
 mod observation;
+mod particle;
 mod random_generator;
 
-use context::ContextState;
 use fishing_context::FishingContext;
 use observation::Observation;
 use std::env;
@@ -29,9 +28,9 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         5.0,
         (3.31, 1.19),
         (1.36, 0.89),
-        51,
+        51
     );
-    let states: Vec<ContextState> = ctx.particle_filter();
+    let states: Vec<Observation> = ctx.particle_filter();
     let duration = start.elapsed();
     println!("Particle filtering took {:?}", duration);
 
@@ -55,15 +54,25 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     println!("Writing result to output file...");
     let mut wtr = csv::Writer::from_path(&args[2])?;
 
-    wtr.write_record(&["x", "y", "heading", "speed", "context"])?;
+    wtr.write_record(&[
+        "x",
+        "y",
+        "time",
+        "heading",
+        "speed",
+        "context",
+        "distanceToShore",
+    ])?;
 
     for state in states {
         wtr.serialize((
             state.pos.x,
             state.pos.y,
+            state.time,
             state.heading,
             state.speed,
             state.context,
+            state.distance_to_shore,
         ))?;
     }
 

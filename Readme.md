@@ -67,3 +67,9 @@ What we need is to try and reapply the particle filtering on the obtained result
 
 - Could we exploit the idea of Kalman filters in second layer?
 - How about the idea of Viterbi algorithm? (even of possible, it would be long because it has to be applied for each set of samples)
+
+## The new algorithm
+
+After studying more on particle filtering, we realized that some parts of the implemented algorithm are not correct and they need to be modified. In particular the way we are calling three steps of the algorithm. The motion and movement model do not change with regard to what we had before. Changes happen in the way we are calling three steps and how the best path is then chosen. 
+The overall structure of how the best path is chosen has been changed. What happens now is that we sample (or resample in the old algorithm) particles and after sampling, we update them. When updating, we first generate random particles and then apply the update function on them which considers the previous set of particles and applies it when updating. After these two steps, we apply the importance sampling step. 
+In order to do the update step, we need to have a memory and this is managed via keeping a memory of all particles and their context every time we apply the update step. This means that the number of elements in this memory is equal to number of observations times number of particles for each step. At the end, for each element of this memory which has $n$ particles, we take a majority vote and that would be the chosen context for that observation. 

@@ -19,4 +19,6 @@ for file_path in all_files:
     file_name = os.path.basename(file_path)
     # Execute rust code to generate the result file
     process = subprocess.Popen(
-        ['cargo', 'run', '--', file_path, os.path.join(OUTPUT_FOLDER, file_name)])
+        # ['cargo', 'run', '--', file_path, os.path.join(OUTPUT_FOLDER, file_name)])
+        ['./target/release/context-matching', file_path, os.path.join(OUTPUT_FOLDER, file_name)])
+    # process.wait()

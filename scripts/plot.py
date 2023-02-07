@@ -80,7 +80,7 @@ if __name__ == "__main__":
         plt.show()
     elif (PLOT_DESC == "ctx"):
         plot_ctx(obs_df, res_df)
-        plt.legend(loc="upper left")
+        # plt.legend(loc="upper left")
         plt.show()
     else:
         print("Description {} is not known.".format(PLOT_DESC))
