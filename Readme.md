@@ -73,3 +73,22 @@ What we need is to try and reapply the particle filtering on the obtained result
 After studying more on particle filtering, we realized that some parts of the implemented algorithm are not correct and they need to be modified. In particular the way we are calling three steps of the algorithm. The motion and movement model do not change with regard to what we had before. Changes happen in the way we are calling three steps and how the best path is then chosen. 
 The overall structure of how the best path is chosen has been changed. What happens now is that we sample (or resample in the old algorithm) particles and after sampling, we update them. When updating, we first generate random particles and then apply the update function on them which considers the previous set of particles and applies it when updating. After these two steps, we apply the importance sampling step. 
 In order to do the update step, we need to have a memory and this is managed via keeping a memory of all particles and their context every time we apply the update step. This means that the number of elements in this memory is equal to number of observations times number of particles for each step. At the end, for each element of this memory which has $n$ particles, we take a majority vote and that would be the chosen context for that observation. 
+
+The result is:  
+- Total purity is 99.0%  
+- Total coverage is 84.7%  
+- Total harmonic mean is 90.8%
+
+## Adding a third state 
+To be more precise, we have decided to add a third state. Now we have three states. "Go Fishing", "Fishing" and "GoToPort". Adding this step required us to change how we do the movement model. The new movement model is:
+
+
+Here is the results with added new state if the movement model is simple and flips degrees when needed if it sees Go To Port or Go Fishing (without calculating normal and all that for direction):
+- Total purity is 99.1%  
+- Total coverage is 60.9%  
+- Total harmonic mean is 75.1%
+
+Here is the results with added new state if the movement model is complicated and calculates slopes (without calculating normal and all that for direction):
+- Total purity is 99.5%  
+- Total coverage is 56.21%  
+- Total harmonic mean is 70.2%

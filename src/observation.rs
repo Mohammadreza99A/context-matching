@@ -1,5 +1,5 @@
-use crate::particle::ParticleContextType;
 use crate::geometry::Point;
+use crate::particle::ParticleContextType;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Clone, Copy)]
@@ -46,9 +46,11 @@ impl Observation {
                 heading: record.bearing,
                 speed: record.euc_speed,
                 context: if record.label.contains("fishing") {
-                    ParticleContextType::FISHING
+                    ParticleContextType::Fishing
+                } else if record.label.contains("01-sailing") {
+                    ParticleContextType::GoFishing
                 } else {
-                    ParticleContextType::SAILING
+                    ParticleContextType::GoToPort
                 },
                 distance_to_shore: record.distanceToShore,
             };

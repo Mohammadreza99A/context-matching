@@ -5,13 +5,6 @@ import glob
 from sys import argv
 import numpy as np
 
-if (len(argv) != 3):
-    print("Bad number of arguments: <input_obs_folder> <input_res_folder>")
-    exit()
-
-INPUT_OBS_FOLDER = argv[1]
-INPUT_RES_FOLDER = argv[2]
-
 
 def calculate_purity(obs_df, res_df):
     purity = 0
@@ -23,8 +16,11 @@ def calculate_purity(obs_df, res_df):
 
     segments_count = segments.iloc[len(segments) - 1]["segment_id"]
 
+    obs_go_fishing_indices = (obs_df[obs_df['label'] == "01-sailing"].iloc[0].name,
+                              obs_df[obs_df['label'] == "02-fishing"].iloc[0].name)
     obs_fishing_indices = (obs_df[obs_df['label'] == "02-fishing"].iloc[0].name,
                            obs_df[obs_df['label'] == "03-sailing"].iloc[0].name)
+    obs_go_to_port_indices = (obs_fishing_indices[1], len(obs_df))
 
     row_counter = 0
     for i in range(1, segments_count + 1):
@@ -34,12 +30,14 @@ def calculate_purity(obs_df, res_df):
         segment_i_label = segment_i.iloc[0]["context"]
 
         for _ in range(0, len(segment_i)):
-            if (row_counter >= obs_fishing_indices[0] and row_counter < obs_fishing_indices[1]):
-                if (segment_i_label == "FISHING"):
-
+            if (row_counter >= obs_go_fishing_indices[0] and row_counter < obs_go_fishing_indices[1]):
+                if (segment_i_label == "GoFishing"):
                     correct_labels_count += 1
-            else:
-                if (segment_i_label == "SAILING"):
+            if (row_counter >= obs_fishing_indices[0] and row_counter < obs_fishing_indices[1]):
+                if (segment_i_label == "Fishing"):
+                    correct_labels_count += 1
+            if (row_counter >= obs_go_to_port_indices[0] and row_counter < obs_go_to_port_indices[1]):
+                if (segment_i_label == "GoToPort"):
                     correct_labels_count += 1
 
             row_counter += 1
@@ -65,18 +63,18 @@ def calculate_coverage(obs_df, res_df):
 
     fishing_segment = segments.iloc[fishing_indices[0]:fishing_indices[1]]
     fishing_segment_correct_labels = len(
-        fishing_segment[fishing_segment["context"] == "FISHING"])
+        fishing_segment[fishing_segment["context"] == "Fishing"])
     coverage += fishing_segment_correct_labels / len(fishing_segment)
 
-    sailing_segment_1 = segments.iloc[0:fishing_indices[0]]
-    sailing_segment_1_correct_labels = len(
-        sailing_segment_1[sailing_segment_1["context"] == "SAILING"])
-    coverage += sailing_segment_1_correct_labels / len(sailing_segment_1)
+    go_fishing_segment = segments.iloc[0:fishing_indices[0]]
+    go_fishing_correct_labels = len(
+        go_fishing_segment[go_fishing_segment["context"] == "GoFishing"])
+    coverage += go_fishing_correct_labels / len(go_fishing_segment)
 
-    sailing_segment_2 = segments.iloc[fishing_indices[1]:len(segments)]
-    sailing_segment_2_correct_labels = len(
-        sailing_segment_2[sailing_segment_2["context"] == "SAILING"])
-    coverage += sailing_segment_2_correct_labels / len(sailing_segment_2)
+    go_to_port_segment = segments.iloc[fishing_indices[1]:len(segments)]
+    go_to_port_segment_correct_labels = len(
+        go_to_port_segment[go_to_port_segment["context"] == "GoToPort"])
+    coverage += go_to_port_segment_correct_labels / len(go_to_port_segment)
 
     return coverage / total_obs_segments_count
 
@@ -86,6 +84,13 @@ def calculate_harmonic_mean(purity, coverage):
 
 
 if __name__ == "__main__":
+    if (len(argv) != 3):
+        print("Bad number of arguments: <input_obs_folder> <input_res_folder>")
+        exit()
+
+    INPUT_OBS_FOLDER = argv[1]
+    INPUT_RES_FOLDER = argv[2]
+
     all_res_files = glob.glob(os.path.join(INPUT_RES_FOLDER, "*.csv"))
 
     total_purity = 0

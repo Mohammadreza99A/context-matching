@@ -1,8 +1,10 @@
+#![allow(dead_code, unused_imports, unused_mut, unused_variables)]
 mod fishing_context;
 mod geometry;
 mod observation;
 mod particle;
 mod random_generator;
+mod utils;
 
 use fishing_context::FishingContext;
 use observation::Observation;
@@ -28,7 +30,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         5.0,
         (3.31, 1.19),
         (1.36, 0.89),
-        51
+        51,
     );
     let states: Vec<Observation> = ctx.particle_filter();
     let duration = start.elapsed();

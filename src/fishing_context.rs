@@ -1,10 +1,15 @@
-use crate::random_generator::{random_normal, random_uniform, random_uniform_range};
+use crate::random_generator::{
+    random_normal, random_uniform, random_uniform_range, random_usize_uniform_range,
+};
 
 use crate::{
     geometry::Point,
     observation::Observation,
     particle::{Particle, ParticleContextType},
 };
+
+use crate::utils::linspace;
+use rand::seq::SliceRandom;
 
 #[derive(Debug)]
 pub struct FishingContext {
@@ -40,20 +45,20 @@ impl FishingContext {
     pub fn particle_filter(&mut self) -> Vec<Observation> {
         // Generate initial particles
         for _i in 0..self.nb_of_particles {
-            let mut random_context = ParticleContextType::SAILING;
-            if random_uniform() > 0.5 {
-                random_context = ParticleContextType::FISHING;
-            }
-            // if i > self.nb_of_particles / 2 {
-            //     random_context = ParticleContextType::FISHING;
+            let mut random_context = ParticleContextType::GoFishing;
+            // let rnd = random_uniform();
+            // if rnd > 0.33 && rnd < 0.66 {
+            //     random_context = ParticleContextType::Fishing;
             // }
+            // if rnd > 0.66 {
+            //     random_context = ParticleContextType::GoToPort;
+            // }
+
             let mut particle: Particle = Particle {
                 pos: self.observations[0].pos,
                 direction: Point {
-                    x: self.observations[0].heading.sin(),
-                    // x: random_uniform(),
-                    y: self.observations[0].heading.cos(),
-                    // y: random_uniform(),
+                    x: self.observations[0].heading.cos(),
+                    y: self.observations[0].heading.sin(),
                 },
                 heading: self.observations[0].heading,
                 speed: self.observations[0].speed,
@@ -80,12 +85,21 @@ impl FishingContext {
         for i in 0..self.particles.len() {
             // Drawing a sample context-state based on transition probabilities
             let mut new_context: ParticleContextType = self.particles[i].context;
+            // 10% chance that the context changes to another one
             if random_uniform() < 0.1 {
-                match new_context {
-                    ParticleContextType::SAILING => new_context = ParticleContextType::FISHING,
-                    ParticleContextType::FISHING => new_context = ParticleContextType::SAILING,
+                // if self.particles[i].context == ParticleContextType::GoFishing {
+                //     new_context = ParticleContextType::Fishing;
+                // } else if self.particles[i].context == ParticleContextType::Fishing {
+                //     new_context = ParticleContextType::GoFishing;
+                // }
+                match self.particles[i].context {
+                    ParticleContextType::GoFishing => new_context = ParticleContextType::Fishing,
+                    ParticleContextType::Fishing => new_context = ParticleContextType::GoToPort,
+                    ParticleContextType::GoToPort => new_context = ParticleContextType::GoFishing,
                 }
             }
+
+            // Add context to memory
             self.particles[i].context = new_context;
             self.particles[i].memory.push(new_context);
 
@@ -134,42 +148,35 @@ impl FishingContext {
     fn update(&self, observation: Observation, particle: &Particle) -> Particle {
         let time_diff = observation.time;
 
-        // Update heading
-        // randomly  (uniform) chosen from -0.4 to +0.4 radians
-        // (appx 22.91 degree) from previous heading
-        let mut heading_low = ((particle.heading - 22.91) + 360.0) % 360.0;
-        let mut heading_high = (particle.heading + 22.91) % 360.0;
-        if heading_high < heading_low {
-            let heading_tmp = heading_high;
-            heading_high = heading_low;
-            heading_low = heading_tmp;
-        }
-        let new_heading = random_uniform_range(heading_low, heading_high);
-
         // Update speed
-        // The speed is set according to the context
         let new_speed = match particle.context {
-            ParticleContextType::FISHING => random_normal(
+            ParticleContextType::Fishing => random_normal(
                 self.fishing_normal_speed_distr.0,
                 self.fishing_normal_speed_distr.1,
             ),
-            ParticleContextType::SAILING => random_normal(
+            ParticleContextType::GoFishing => random_normal(
+                self.sailing_normal_speed_distr.0,
+                self.sailing_normal_speed_distr.1,
+            ),
+            ParticleContextType::GoToPort => random_normal(
                 self.sailing_normal_speed_distr.0,
                 self.sailing_normal_speed_distr.1,
             ),
         };
+        let distance = new_speed * time_diff;
+
+        // Update heading
+        // let new_heading = self.generate_new_random_heading(&particle, distance);
+        // let new_heading = self.generate_new_random_heading2(&particle);
+        let new_heading = self.calc_new_heading(&particle);
+
+        // Update direction
+        let new_dir = self.calc_new_direction(new_heading);
 
         // Update position
-        let mut new_dir = Point {
-            x: new_heading.sin(),
-            y: new_heading.cos(),
-        };
-        let norm = 1.0 / new_dir.norm();
-        new_dir.x = new_dir.x * norm;
-        new_dir.y = new_dir.y * norm;
         let new_pos = Point {
-            x: particle.pos.x + (new_speed * time_diff * new_dir.x),
-            y: particle.pos.y + (new_speed * time_diff * new_dir.y),
+            x: particle.pos.x + (distance * new_dir.x),
+            y: particle.pos.y + (distance * new_dir.y),
         };
 
         Particle {
@@ -203,8 +210,221 @@ impl FishingContext {
         weighted_particles
     }
 
+    fn generate_new_random_heading(&self, particle: &Particle, distance: f64) -> f64 {
+        let coast = self.observations[0].pos;
+        let man_angle = 22.91;
+
+        if (particle.pos.x == coast.x && particle.pos.y == coast.y)
+            || particle.context == ParticleContextType::Fishing
+        {
+            let mut heading_low = ((particle.heading - man_angle) + 360.0) % 360.0;
+            let mut heading_high = (particle.heading + man_angle) % 360.0;
+            if heading_high < heading_low {
+                let heading_tmp = heading_high;
+                heading_high = heading_low;
+                heading_low = heading_tmp;
+            }
+            let new_heading = random_uniform_range(heading_low, heading_high);
+            return new_heading;
+        }
+
+        // Find the slope of the line from coast to particle's current position
+        // Let's call this line slope
+        let slope = (particle.pos.y - coast.y) / (particle.pos.x - coast.x);
+
+        // Find the negative reciprocal of the slope to get the slope of line
+        // which is perpendicular at particle's point. Let's call this perp_slope
+        let perp_slope = -1.0 / slope;
+
+        // Find the y-intercept of perp_slope using the particle's pos and perp_slope
+        let b_perp = particle.pos.y - perp_slope * particle.pos.x;
+
+        // Now let's define the cone which has all the possible headings from
+        // -0.4 radians to 0.4 radians of the current heading
+        let mut heading_low = particle.heading - man_angle;
+        let mut heading_high = particle.heading + man_angle;
+        if particle.context == ParticleContextType::GoFishing {
+            if heading_low > 90.0 && heading_low < 270.0 {
+                heading_low = particle.heading - 180.0;
+            }
+            if heading_low > 90.0 && heading_low < 270.0 {
+                heading_high = particle.heading - 180.0;
+            }
+        }
+        if particle.context == ParticleContextType::GoToPort {
+            if !(heading_low > 90.0 && heading_low < 270.0) {
+                heading_low = particle.heading - 180.0;
+            }
+            if !(heading_high > 90.0 && heading_high < 270.0) {
+                heading_high = particle.heading - 180.0;
+            }
+        }
+        heading_low = (heading_low % 360.0 + 360.0) % 360.0;
+        heading_high = (heading_high % 360.0 + 360.0) % 360.0;
+        let mut cone: Vec<f64> = linspace::<f64>(heading_low, heading_high, 50);
+
+        // Define the range of x and y values for the cone based on the angle
+        // and distance from particle's position
+        let mut x_cone = Vec::new();
+        let mut y_cone = Vec::new();
+        for angle in cone.clone() {
+            x_cone.push(particle.pos.x + distance * angle.cos());
+            y_cone.push(particle.pos.y + distance * angle.sin());
+        }
+
+        // Check if the cone is on the far side of the perp_line and if not
+        // only take the part which is
+        let mut far_side_indices: Vec<usize> = Vec::new();
+        for i in 0..x_cone.len() {
+            let x = x_cone[i];
+            let y = y_cone[i];
+            if (perp_slope * x + b_perp) < y {
+                far_side_indices.push(i);
+            }
+        }
+
+        // Now select a random new heading from the cone
+        let new_heading: f64;
+        if far_side_indices.len() == 0 {
+            let index = random_usize_uniform_range(0, cone.len());
+            new_heading = cone[index];
+            // random_heading = random_usize_uniform_range(0, x_cone.len() - 1);
+        } else {
+            new_heading = cone[*far_side_indices.choose(&mut rand::thread_rng()).unwrap()];
+        }
+
+        new_heading
+    }
+
+    fn calc_new_heading(&self, particle: &Particle) -> f64 {
+        let coast = self.observations[0].pos;
+        let man_angle = 22.91;
+
+        if particle.context == ParticleContextType::Fishing {
+            let mut heading_low = ((particle.heading - man_angle) + 360.0) % 360.0;
+            let mut heading_high = (particle.heading + man_angle) % 360.0;
+            if heading_high < heading_low {
+                let heading_tmp = heading_high;
+                heading_high = heading_low;
+                heading_low = heading_tmp;
+            }
+            let new_heading = random_uniform_range(heading_low, heading_high);
+            return new_heading;
+        }
+
+        let mut heading_low = particle.heading - man_angle;
+        let mut heading_high = particle.heading + man_angle;
+        if particle.context == ParticleContextType::GoFishing {
+            if heading_low > 90.0 && heading_low < 270.0 {
+                heading_low = (180.0 - heading_low) % 360.0;
+            }
+            if heading_low > 90.0 && heading_low < 270.0 {
+                heading_high = (180.0 - heading_high) % 360.0;
+            }
+        }
+        if particle.context == ParticleContextType::GoToPort {
+            if !(heading_low > 90.0 && heading_low < 270.0) {
+                heading_low = (180.0 - heading_low) % 360.0;
+                // heading_low = particle.heading - 180.0;
+                // heading_low = (heading_low % 360.0 + 360.0) % 360.0;
+            }
+            if !(heading_high > 90.0 && heading_high < 270.0) {
+                heading_high = (180.0 - heading_high) % 360.0;
+                // heading_high = particle.heading - 180.0;
+                // heading_high = (heading_high % 360.0 + 360.0) % 360.0;
+            }
+        }
+
+        if heading_high < heading_low {
+            let heading_tmp = heading_high;
+            heading_high = heading_low;
+            heading_low = heading_tmp;
+        }
+        let new_heading = random_uniform_range(heading_low, heading_high);
+
+        new_heading
+    }
+
+    fn generate_new_random_heading2(&self, particle: &Particle) -> f64 {
+        let coast = self.observations[0].pos;
+
+        if particle.pos.x == coast.x && particle.pos.y == coast.y {
+            let heading_low = particle.heading - 0.4;
+            let heading_high = particle.heading + 0.4;
+
+            return random_uniform_range(heading_low, heading_high);
+        }
+
+        // let theta = ((particle.pos.x - coast.x) / (particle.pos.y - coast.y)).atan();
+        let theta = ((coast.y - particle.pos.y) / (coast.x - particle.pos.x)).atan();
+
+        // let new_heading: f64 = match particle.context {
+        //     ParticleContextType::Fishing => {
+        //         random_uniform_range(particle.heading - 0.4, particle.heading + 0.4)
+        //     }
+        //     ParticleContextType::GoFishing => random_uniform_range(theta - 0.4, theta + 0.4),
+        //     ParticleContextType::GoToPort => {
+        //         let pi = std::f64::consts::PI;
+        //         random_uniform_range(theta - pi - 0.4, theta - pi + 0.4)
+        //     }
+        // };
+
+        let new_heading: f64 = match particle.context {
+            ParticleContextType::Fishing => {
+                random_uniform_range(particle.heading - 0.4, particle.heading + 0.4)
+            }
+            ParticleContextType::GoFishing => {
+                let heading_diff =
+                    (theta - particle.heading.to_radians()) % (2.0 * std::f64::consts::PI);
+
+                let low: f64;
+                let high: f64;
+
+                if heading_diff < std::f64::consts::PI {
+                    low = 0.0;
+                    high = 22.0;
+                } else {
+                    low = -22.0;
+                    high = 0.0;
+                }
+
+                random_uniform_range(low, high) + particle.heading
+            }
+            ParticleContextType::GoToPort => {
+                let heading_diff =
+                    (theta - particle.heading.to_radians()) % (2.0 * std::f64::consts::PI);
+
+                let low: f64;
+                let high: f64;
+
+                if heading_diff < std::f64::consts::PI {
+                    low = -22.0;
+                    high = 0.0;
+                } else {
+                    low = 0.0;
+                    high = 22.0;
+                }
+
+                random_uniform_range(low, high) + particle.heading
+            }
+        };
+
+        new_heading % 360.0
+    }
+
+    fn calc_new_direction(&self, heading: f64) -> Point {
+        let mut new_dir = Point {
+            x: heading.cos(),
+            y: heading.sin(),
+        };
+        let norm = 1.0 / new_dir.norm();
+        new_dir = new_dir * norm;
+
+        new_dir
+    }
+
     fn calc_optimal_sequence(&self) -> Vec<Observation> {
-        let mut smoothing_window: Vec<(u16, u16)> = Vec::new();
+        let mut smoothing_window: Vec<(u16, u16, u16)> = Vec::new();
 
         let mut optimal_sequence: Vec<Observation> = Vec::new();
 
@@ -214,21 +434,27 @@ impl FishingContext {
                 obs_memory.push(self.particles[j].memory[i]);
             }
 
-            let mut sailing_count: u16 = 0;
+            let mut go_fishing_count: u16 = 0;
             let mut fishing_count: u16 = 0;
+            let mut go_to_port_count: u16 = 0;
 
             for memory in obs_memory {
                 match memory {
-                    ParticleContextType::SAILING => sailing_count += 1,
-                    ParticleContextType::FISHING => fishing_count += 1,
+                    ParticleContextType::GoFishing => go_fishing_count += 1,
+                    ParticleContextType::Fishing => fishing_count += 1,
+                    ParticleContextType::GoToPort => go_to_port_count += 1,
                 }
             }
 
             // Majority context
-            let mut majority_context = ParticleContextType::SAILING;
-            if sailing_count < fishing_count {
-                majority_context = ParticleContextType::FISHING;
-            }
+            let majority_context =
+                if go_fishing_count > fishing_count && go_fishing_count > go_to_port_count {
+                    ParticleContextType::GoFishing
+                } else if fishing_count > go_fishing_count && fishing_count > go_to_port_count {
+                    ParticleContextType::Fishing
+                } else {
+                    ParticleContextType::GoToPort
+                };
 
             let obs_with_context = Observation {
                 pos: self.observations[i].pos,
@@ -240,24 +466,24 @@ impl FishingContext {
             };
             optimal_sequence.push(obs_with_context);
 
-            // For smoothing
-            let context_window_elem = (sailing_count, fishing_count);
-            if smoothing_window.len() < self.context_smoothing_window_size {
-                smoothing_window.push(context_window_elem);
-            } else {
-                smoothing_window.drain(0..1);
-                smoothing_window.push(context_window_elem);
-            }
+            // // For smoothing
+            // let context_window_elem = (go_fishing_count, fishing_count, go_to_port_count);
+            // if smoothing_window.len() < self.context_smoothing_window_size {
+            //     smoothing_window.push(context_window_elem);
+            // } else {
+            //     smoothing_window.drain(0..1);
+            //     smoothing_window.push(context_window_elem);
+            // }
 
-            // Smoothing
-            if i >= self.context_smoothing_window_size {
-                let current_context =
-                    optimal_sequence[i - (self.context_smoothing_window_size / 2)].context;
-                let smoothed_context =
-                    self.smooth_context(current_context, smoothing_window.as_slice());
-                optimal_sequence[i - (self.context_smoothing_window_size / 2)].context =
-                    smoothed_context;
-            }
+            // // Smoothing
+            // if i >= self.context_smoothing_window_size {
+            //     let current_context =
+            //         optimal_sequence[i - (self.context_smoothing_window_size / 2)].context;
+            //     let smoothed_context =
+            //         self.smooth_context(current_context, smoothing_window.as_slice());
+            //     optimal_sequence[i - (self.context_smoothing_window_size / 2)].context =
+            //         smoothed_context;
+            // }
         }
 
         optimal_sequence
@@ -266,35 +492,39 @@ impl FishingContext {
     fn smooth_context(
         &self,
         current_context: ParticleContextType,
-        smoothing_window: &[(u16, u16)],
+        smoothing_window: &[(u16, u16, u16)],
     ) -> ParticleContextType {
         let mid_index = self.context_smoothing_window_size / 2;
 
-        let mut left_hand_sailing = 0;
-        let mut left_hand_fishing = 0;
-        let mut right_hand_sailing = 0;
-        let mut right_hand_fishing = 0;
+        let mut go_fishing_total = 0;
+        let mut fishing_total = 0;
+        let mut go_to_port_total = 0;
 
         for i in 0..mid_index {
-            left_hand_sailing += smoothing_window[i].0;
-            left_hand_fishing += smoothing_window[i].1;
+            go_fishing_total += smoothing_window[i].0;
+            fishing_total += smoothing_window[i].1;
+            go_to_port_total += smoothing_window[i].2;
         }
 
         for i in mid_index + 1..self.context_smoothing_window_size {
-            right_hand_sailing += smoothing_window[i].0;
-            right_hand_fishing += smoothing_window[i].1;
+            go_fishing_total += smoothing_window[i].0;
+            fishing_total += smoothing_window[i].1;
+            go_to_port_total += smoothing_window[i].2;
         }
 
-        let sailing_total = left_hand_sailing + right_hand_sailing;
-        let fishing_total = left_hand_fishing + right_hand_fishing;
-
-        if sailing_total > fishing_total {
+        if go_fishing_total > fishing_total && go_fishing_total > go_to_port_total {
             if smoothing_window[mid_index].0 >= 50 {
-                return ParticleContextType::SAILING;
+                return ParticleContextType::GoFishing;
             }
-        } else {
+        }
+        if fishing_total > go_fishing_total && fishing_total > go_to_port_total {
             if smoothing_window[mid_index].1 >= 50 {
-                return ParticleContextType::FISHING;
+                return ParticleContextType::Fishing;
+            }
+        }
+        if go_to_port_total > go_fishing_total && go_to_port_total > fishing_total {
+            if smoothing_window[mid_index].2 >= 50 {
+                return ParticleContextType::GoToPort;
             }
         }
 
@@ -302,10 +532,7 @@ impl FishingContext {
     }
 
     fn calc_emission_prob(&self, observation: &Observation, particle: &Particle) -> f64 {
-        let p: Point = Point {
-            x: observation.pos.x - particle.pos.x,
-            y: observation.pos.y - particle.pos.y,
-        };
+        let p: Point = observation.pos - particle.pos;
         let two_pi = 2.0f64 * std::f64::consts::PI;
         let gc = p.norm();
         let first_term = 1.0 / (two_pi.sqrt() * self.sigma);

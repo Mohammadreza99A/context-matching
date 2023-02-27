@@ -3,8 +3,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 pub enum ParticleContextType {
-    SAILING,
-    FISHING,
+    GoFishing,
+    Fishing,
+    GoToPort,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
