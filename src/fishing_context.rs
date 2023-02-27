@@ -4,6 +4,7 @@ use crate::random_generator::{
 
 use crate::{
     geometry::Point,
+    markov_graph::{read_graph_from_file, MarkovGraph},
     observation::Observation,
     particle::{Particle, ParticleContextType},
 };
@@ -20,6 +21,7 @@ pub struct FishingContext {
     sailing_normal_speed_distr: (f64, f64),
     fishing_normal_speed_distr: (f64, f64),
     context_smoothing_window_size: usize,
+    markov_graph: MarkovGraph<ParticleContextType>,
 }
 
 impl FishingContext {
@@ -31,6 +33,9 @@ impl FishingContext {
         fishing_normal_speed_distr: (f64, f64),
         context_window_size: usize,
     ) -> FishingContext {
+        let markov_graph: MarkovGraph<ParticleContextType> = read_graph_from_file("src/graph.txt");
+        println!("\nHere is the Markov graph: \n{}", markov_graph);
+
         FishingContext {
             observations: observations.to_vec(),
             nb_of_particles: nb_of_particles,
@@ -39,6 +44,7 @@ impl FishingContext {
             sailing_normal_speed_distr: sailing_normal_speed_distr,
             fishing_normal_speed_distr: fishing_normal_speed_distr,
             context_smoothing_window_size: context_window_size,
+            markov_graph,
         }
     }
 
@@ -46,13 +52,6 @@ impl FishingContext {
         // Generate initial particles
         for _i in 0..self.nb_of_particles {
             let mut random_context = ParticleContextType::GoFishing;
-            // let rnd = random_uniform();
-            // if rnd > 0.33 && rnd < 0.66 {
-            //     random_context = ParticleContextType::Fishing;
-            // }
-            // if rnd > 0.66 {
-            //     random_context = ParticleContextType::GoToPort;
-            // }
 
             let mut particle: Particle = Particle {
                 pos: self.observations[0].pos,
@@ -87,16 +86,7 @@ impl FishingContext {
             let mut new_context: ParticleContextType = self.particles[i].context;
             // 10% chance that the context changes to another one
             if random_uniform() < 0.1 {
-                // if self.particles[i].context == ParticleContextType::GoFishing {
-                //     new_context = ParticleContextType::Fishing;
-                // } else if self.particles[i].context == ParticleContextType::Fishing {
-                //     new_context = ParticleContextType::GoFishing;
-                // }
-                match self.particles[i].context {
-                    ParticleContextType::GoFishing => new_context = ParticleContextType::Fishing,
-                    ParticleContextType::Fishing => new_context = ParticleContextType::GoToPort,
-                    ParticleContextType::GoToPort => new_context = ParticleContextType::GoFishing,
-                }
+                new_context = self.markov_graph.get_dest(new_context, 0.1).unwrap();
             }
 
             // Add context to memory

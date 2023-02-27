@@ -1,6 +1,7 @@
 #![allow(dead_code, unused_imports, unused_mut, unused_variables)]
 mod fishing_context;
 mod geometry;
+mod markov_graph;
 mod observation;
 mod particle;
 mod random_generator;
@@ -19,7 +20,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         return Err("Bad number of arguments: <input_csv_file_path> <output_result_path>".into());
     }
 
-    println!("Reading and parsing input CSV file...");
+    println!("\nReading and parsing input CSV file...");
     let observations = Observation::from_csv(&args[1])?;
 
     println!("Particle filtering...");
@@ -36,7 +37,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let duration = start.elapsed();
     println!("Particle filtering took {:?}", duration);
 
-    println!("Analyzing results...");
+    println!("\nAnalyzing results...");
     let mut correct_context: u32 = 0;
     let mut false_context: u32 = 0;
     for i in 0..states.len() {
@@ -53,7 +54,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         correct_context as f32 / (correct_context + false_context) as f32
     );
 
-    println!("Writing result to output file...");
+    println!("\nWriting results to output file...");
     let mut wtr = csv::Writer::from_path(&args[2])?;
 
     wtr.write_record(&[
@@ -79,6 +80,8 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     }
 
     wtr.flush()?;
+
+    println!("Results were written to the file.");
 
     Ok(())
 }

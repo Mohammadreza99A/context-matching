@@ -1,0 +1,6 @@
+GoFishing GoFishing 0.9
+Fishing Fishing 0.9
+GoToPort GoToPort 0.9
+GoFishing Fishing 0.1
+Fishing GoToPort 0.1
+GoToPort GoFishing 0.1
