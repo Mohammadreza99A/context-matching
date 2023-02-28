@@ -1,15 +1,15 @@
 use crate::geometry::Point;
 use crate::particle::ParticleContextType;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::fmt;
 
-#[derive(Debug, Deserialize, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub struct Observation {
     pub pos: Point,
     pub time: f64,
     pub heading: f64,
     pub speed: f64,
     pub context: ParticleContextType,
-    pub distance_to_shore: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,11 +52,22 @@ impl Observation {
                 } else {
                     ParticleContextType::GoToPort
                 },
-                distance_to_shore: record.distanceToShore,
             };
             observations.push(obs);
         }
 
         Ok(observations)
+    }
+}
+
+impl fmt::Display for Observation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "position,time,heading,speed,context\n")?;
+        write!(
+            f,
+            "{},{:.2},{:.2},{:.2},{}\n",
+            self.pos, self.time, self.heading, self.speed, self.context
+        )?;
+        Ok(())
     }
 }

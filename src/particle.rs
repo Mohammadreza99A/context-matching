@@ -1,7 +1,25 @@
 use crate::geometry::Point;
+use crate::observation::Observation;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Particle {
+    pub pos: Point,
+    pub direction: Point,
+    pub heading: f64,
+    pub speed: f64,
+    pub weight: f64,
+    pub context: ParticleContextType,
+    pub memory: Vec<ParticleContextType>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ParticleHistory {
+    pub observation: Observation,
+    pub particles: Vec<Particle>,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ParticleContextType {
@@ -33,13 +51,22 @@ impl fmt::Display for ParticleContextType {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Particle {
-    pub pos: Point,
-    pub direction: Point,
-    pub heading: f64,
-    pub speed: f64,
-    pub weight: f64,
-    pub context: ParticleContextType,
-    pub memory: Vec<ParticleContextType>,
+impl fmt::Display for ParticleHistory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.observation)?;
+        write!(f, "position,direction,heading,speed,weight,context\n")?;
+        for particle in &self.particles {
+            write!(
+                f,
+                "{},{},{:.2},{:.2},{:.2},{}\n",
+                particle.pos,
+                particle.direction,
+                particle.heading,
+                particle.speed,
+                particle.weight,
+                particle.context
+            )?;
+        }
+        Ok(())
+    }
 }

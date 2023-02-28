@@ -16,14 +16,22 @@ use std::time::Instant;
 fn main() -> Result<(), Box<dyn error::Error>> {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() != 3 {
-        return Err("Bad number of arguments: <input_csv_file_path> <output_result_path>".into());
+    if args.len() < 3 || args.len() > 4 {
+        return Err(
+            "Bad number of arguments: <input_csv_file_path> <output_result_path> <history_path>"
+                .into(),
+        );
     }
 
     println!("\nReading and parsing input CSV file...");
     let observations = Observation::from_csv(&args[1])?;
 
     println!("Particle filtering...");
+    let mut history_file: Option<String> = None;
+    if args.len() == 4 {
+        history_file = Some(args[3].clone());
+    }
+
     let start = Instant::now();
     let mut ctx = FishingContext::new(
         observations.as_slice(),
@@ -32,6 +40,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         (3.31, 1.19),
         (1.36, 0.89),
         51,
+        history_file,
     );
     let states: Vec<Observation> = ctx.particle_filter();
     let duration = start.elapsed();
@@ -75,7 +84,6 @@ fn main() -> Result<(), Box<dyn error::Error>> {
             state.heading,
             state.speed,
             state.context,
-            state.distance_to_shore,
         ))?;
     }
 

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::{Eq, Ord, Ordering};
+use std::fmt;
 use std::ops::{Add, Div, Mul, Sub};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
@@ -88,5 +89,11 @@ impl PartialOrd for Point {
 impl PartialEq for Point {
     fn eq(&self, other: &Point) -> bool {
         self.x == other.x && self.y == other.y
+    }
+}
+
+impl fmt::Display for Point {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({:.3}, {:.3})", self.x, self.y)
     }
 }

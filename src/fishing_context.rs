@@ -1,16 +1,16 @@
 use crate::random_generator::{
     random_normal, random_uniform, random_uniform_range, random_usize_uniform_range,
 };
-
+use crate::utils::linspace;
 use crate::{
     geometry::Point,
     markov_graph::{read_graph_from_file, MarkovGraph},
     observation::Observation,
-    particle::{Particle, ParticleContextType},
+    particle::{Particle, ParticleContextType, ParticleHistory},
 };
-
-use crate::utils::linspace;
 use rand::seq::SliceRandom;
+use std::fs::File;
+use std::io::{BufWriter, Write};
 
 #[derive(Debug)]
 pub struct FishingContext {
@@ -22,6 +22,9 @@ pub struct FishingContext {
     fishing_normal_speed_distr: (f64, f64),
     context_smoothing_window_size: usize,
     markov_graph: MarkovGraph<ParticleContextType>,
+    is_record_history: bool,
+    history_file_path: String,
+    history: Vec<ParticleHistory>,
 }
 
 impl FishingContext {
@@ -32,9 +35,17 @@ impl FishingContext {
         sailing_normal_speed_distr: (f64, f64),
         fishing_normal_speed_distr: (f64, f64),
         context_window_size: usize,
+        history_file: Option<String>,
     ) -> FishingContext {
         let markov_graph: MarkovGraph<ParticleContextType> = read_graph_from_file("src/graph.txt");
         println!("\nHere is the Markov graph: \n{}", markov_graph);
+
+        let mut is_record_history = false;
+        let mut file_path = "".to_string();
+        if let Some(f) = history_file {
+            is_record_history = true;
+            file_path = f;
+        }
 
         FishingContext {
             observations: observations.to_vec(),
@@ -45,6 +56,9 @@ impl FishingContext {
             fishing_normal_speed_distr: fishing_normal_speed_distr,
             context_smoothing_window_size: context_window_size,
             markov_graph,
+            is_record_history,
+            history_file_path: file_path,
+            history: Vec::new(),
         }
     }
 
@@ -69,11 +83,55 @@ impl FishingContext {
             self.particles.push(particle);
         }
 
-        for i in 1..self.observations.len() {
-            self.particle_filter_steps(self.observations[i]);
+        if self.is_record_history {
+            // Open history file to write into it
+            let history_file =
+                File::create(&self.history_file_path).expect("failed to create file");
+
+            // Wrap the file in a buffered writer
+            let mut writer = BufWriter::new(history_file);
+
+            // Add initial particles to history
+            self.add_to_history(&mut writer);
+
+            for i in 1..self.observations.len() {
+                self.particle_filter_steps(self.observations[i]);
+
+                // Add particles to history
+                self.add_to_history(&mut writer);
+            }
+
+            // Flush the buffer to ensure that any remaining data is written to the file
+            writer.flush().expect("failed to flush buffer");
+        } else {
+            for i in 1..self.observations.len() {
+                self.particle_filter_steps(self.observations[i]);
+            }
         }
 
         self.calc_optimal_sequence()
+    }
+
+    fn add_to_history(&mut self, writer: &mut BufWriter<File>) {
+        let particle_history = ParticleHistory {
+            observation: self.observations[0].clone(),
+            particles: self
+                .particles
+                .iter()
+                .cloned()
+                .map(|v| v.clone())
+                .collect::<Vec<Particle>>(),
+        };
+
+        // Convert history to string
+        let history_str = format!("{}", particle_history);
+
+        // Write the particle history string to the buffered writer
+        writer
+            .write(history_str.as_bytes())
+            .expect("failed to write to file");
+
+        self.history.push(particle_history);
     }
 
     fn particle_filter_steps(&mut self, observation: Observation) {
@@ -452,7 +510,6 @@ impl FishingContext {
                 heading: self.observations[i].heading,
                 speed: self.observations[i].speed,
                 context: majority_context,
-                distance_to_shore: self.observations[i].distance_to_shore,
             };
             optimal_sequence.push(obs_with_context);
 
