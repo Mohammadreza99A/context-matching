@@ -60,14 +60,14 @@ impl Observation {
     }
 }
 
-impl fmt::Display for Observation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "position,time,heading,speed,context\n")?;
-        write!(
-            f,
-            "{},{:.2},{:.2},{:.2},{}\n",
-            self.pos, self.time, self.heading, self.speed, self.context
-        )?;
-        Ok(())
-    }
-}
+// impl fmt::Display for Observation {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(f, "position,time,heading,speed,context\n")?;
+//         write!(
+//             f,
+//             "{},{:.2},{:.2},{:.2},{}\n",
+//             self.pos, self.time, self.heading, self.speed, self.context
+//         )?;
+//         Ok(())
+//     }
+// }

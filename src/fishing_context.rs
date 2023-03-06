@@ -91,6 +91,10 @@ impl FishingContext {
             // Wrap the file in a buffered writer
             let mut writer = BufWriter::new(history_file);
 
+            writer
+                .write("position,direction,heading,speed,weight,context\n".as_bytes())
+                .expect("failed to write to file");
+
             // Add initial particles to history
             self.add_to_history(&mut writer);
 
@@ -114,7 +118,6 @@ impl FishingContext {
 
     fn add_to_history(&mut self, writer: &mut BufWriter<File>) {
         let particle_history = ParticleHistory {
-            observation: self.observations[0].clone(),
             particles: self
                 .particles
                 .iter()

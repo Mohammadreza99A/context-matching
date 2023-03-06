@@ -66,15 +66,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     println!("\nWriting results to output file...");
     let mut wtr = csv::Writer::from_path(&args[2])?;
 
-    wtr.write_record(&[
-        "x",
-        "y",
-        "time",
-        "heading",
-        "speed",
-        "context",
-        "distanceToShore",
-    ])?;
+    wtr.write_record(&["x", "y", "time", "heading", "speed", "context"])?;
 
     for state in states {
         wtr.serialize((

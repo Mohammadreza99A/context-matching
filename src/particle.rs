@@ -17,7 +17,6 @@ pub struct Particle {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct ParticleHistory {
-    pub observation: Observation,
     pub particles: Vec<Particle>,
 }
 
@@ -53,8 +52,6 @@ impl fmt::Display for ParticleContextType {
 
 impl fmt::Display for ParticleHistory {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.observation)?;
-        write!(f, "position,direction,heading,speed,weight,context\n")?;
         for particle in &self.particles {
             write!(
                 f,
