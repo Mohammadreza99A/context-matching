@@ -9,6 +9,7 @@ use crate::{
     particle::{Particle, ParticleContextType, ParticleHistory},
 };
 use rand::seq::SliceRandom;
+use std::fmt::write;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 
@@ -24,7 +25,6 @@ pub struct FishingContext {
     markov_graph: MarkovGraph<ParticleContextType>,
     is_record_history: bool,
     history_file_path: String,
-    history: Vec<ParticleHistory>,
 }
 
 impl FishingContext {
@@ -58,7 +58,6 @@ impl FishingContext {
             markov_graph,
             is_record_history,
             history_file_path: file_path,
-            history: Vec::new(),
         }
     }
 
@@ -92,16 +91,21 @@ impl FishingContext {
             let mut writer = BufWriter::new(history_file);
 
             writer
-                .write("position,direction,heading,speed,weight,context\n".as_bytes())
+                .write("id,obs_ctx".as_bytes())
                 .expect("failed to write to file");
+            for i in 0..self.nb_of_particles {
+                write!(writer, ",p_{}", i + 1).unwrap();
+            }
 
             // Add initial particles to history
+            write!(writer, "\n0,{}", self.observations[0].context).unwrap();
             self.add_to_history(&mut writer);
 
             for i in 1..self.observations.len() {
                 self.particle_filter_steps(self.observations[i]);
 
                 // Add particles to history
+                write!(writer, "\n{},{}", i, self.observations[i].context).unwrap();
                 self.add_to_history(&mut writer);
             }
 
@@ -127,14 +131,15 @@ impl FishingContext {
         };
 
         // Convert history to string
-        let history_str = format!("{}", particle_history);
+        for particle in self.particles.clone() {
+            write!(writer, ",{}", particle.context).unwrap();
+        }
+        // let history_str = format!("{}", particle_history);
 
         // Write the particle history string to the buffered writer
-        writer
-            .write(history_str.as_bytes())
-            .expect("failed to write to file");
-
-        self.history.push(particle_history);
+        // writer
+        //     .write(history_str.as_bytes())
+        //     .expect("failed to write to file");
     }
 
     fn particle_filter_steps(&mut self, observation: Observation) {
