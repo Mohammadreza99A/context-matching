@@ -9,6 +9,7 @@ use crate::{
     particle::{Particle, ParticleContextType, ParticleHistory},
 };
 use rand::seq::SliceRandom;
+use std::collections::HashMap;
 use std::fmt::write;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -122,24 +123,13 @@ impl FishingContext {
 
     fn add_to_history(&mut self, writer: &mut BufWriter<File>) {
         let particle_history = ParticleHistory {
-            particles: self
-                .particles
-                .iter()
-                .cloned()
-                .map(|v| v.clone())
-                .collect::<Vec<Particle>>(),
+            particles: self.particles.clone(),
         };
 
         // Convert history to string
-        for particle in self.particles.clone() {
-            write!(writer, ",{}", particle.context).unwrap();
+        for particle in particle_history.particles {
+            write!(writer, ",{}", particle.memory[particle.memory.len() - 1]).unwrap();
         }
-        // let history_str = format!("{}", particle_history);
-
-        // Write the particle history string to the buffered writer
-        // writer
-        //     .write(history_str.as_bytes())
-        //     .expect("failed to write to file");
     }
 
     fn particle_filter_steps(&mut self, observation: Observation) {
@@ -165,7 +155,7 @@ impl FishingContext {
         }
 
         // Assigning weights
-        self.particles = self.importance_sampling(&observation);
+        self.particles = self.weight_measurement(&observation);
         let mut weight_normalization: f64 = 0.0;
         for i in 0..self.particles.len() {
             weight_normalization += self.particles[i].weight;
@@ -246,7 +236,7 @@ impl FishingContext {
         }
     }
 
-    fn importance_sampling(&self, observation: &Observation) -> Vec<Particle> {
+    fn weight_measurement(&self, observation: &Observation) -> Vec<Particle> {
         let mut weighted_particles: Vec<Particle> = Vec::new();
 
         for particle in &self.particles {
@@ -484,40 +474,41 @@ impl FishingContext {
 
         let mut optimal_sequence: Vec<Observation> = Vec::new();
 
+        let states = self.markov_graph.get_all_nodes();
+
         for i in 0..self.observations.len() {
             let mut obs_memory: Vec<ParticleContextType> = Vec::new();
             for j in 0..self.particles.len() {
                 obs_memory.push(self.particles[j].memory[i]);
             }
 
-            let mut go_fishing_count: u16 = 0;
-            let mut fishing_count: u16 = 0;
-            let mut go_to_port_count: u16 = 0;
+            let mut states_count: HashMap<ParticleContextType, u16> = states
+                .clone()
+                .into_iter()
+                .fold(HashMap::new(), |mut acc, ctx_type| {
+                    acc.insert(ctx_type, 0);
+                    acc
+                });
 
             for memory in obs_memory {
-                match memory {
-                    ParticleContextType::GoFishing => go_fishing_count += 1,
-                    ParticleContextType::Fishing => fishing_count += 1,
-                    ParticleContextType::GoToPort => go_to_port_count += 1,
-                }
+                states_count
+                    .entry(memory)
+                    .and_modify(|count| *count += 1)
+                    .or_insert(1);
             }
 
             // Majority context
-            let majority_context =
-                if go_fishing_count > fishing_count && go_fishing_count > go_to_port_count {
-                    ParticleContextType::GoFishing
-                } else if fishing_count > go_fishing_count && fishing_count > go_to_port_count {
-                    ParticleContextType::Fishing
-                } else {
-                    ParticleContextType::GoToPort
-                };
+            let (majority_context, _) = states_count
+                .iter()
+                .max_by_key(|&(_, v)| v)
+                .expect("Map is empty");
 
             let obs_with_context = Observation {
                 pos: self.observations[i].pos,
                 time: self.observations[i].time,
                 heading: self.observations[i].heading,
                 speed: self.observations[i].speed,
-                context: majority_context,
+                context: *majority_context,
             };
             optimal_sequence.push(obs_with_context);
 

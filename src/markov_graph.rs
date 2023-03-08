@@ -41,6 +41,10 @@ where
         }
         None
     }
+
+    pub fn get_all_nodes(&self) -> Vec<N> {
+        self.adj_list.keys().cloned().collect()
+    }
 }
 
 impl<N: fmt::Display> fmt::Display for MarkovGraph<N>
