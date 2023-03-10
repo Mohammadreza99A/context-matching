@@ -23,7 +23,9 @@ def generate_plot(history_file):
 
     print(df)
 
-    df['range'] = df['x'].apply(lambda x: x//101)
+    step_size = 51
+
+    df['range'] = df['x'].apply(lambda x: x//step_size)
 
     fig = px.scatter(df, x='x', y='y', color='ctx', animation_frame='range',
                      labels={
@@ -32,12 +34,12 @@ def generate_plot(history_file):
                      },)
 
     # Set the range of the x-axis to the range of x values for each slider step
-    fig.update_xaxes(range=[-1, 102])
+    fig.update_xaxes(range=[-1, step_size + 1])
 
     # Update the range of the x-axis for each subsequent slider step
     for i in range(0, df['range'].max() + 1):
-        x_min = i * 101
-        x_max = (i + 1) * 101 - 1
+        x_min = i * step_size
+        x_max = (i + 1) * step_size - 1
         fig['frames'][i]['layout']['xaxis']['range'] = [x_min - 1, x_max + 1]
 
     fig.show()
