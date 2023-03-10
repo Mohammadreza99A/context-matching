@@ -47,10 +47,9 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     println!("Particle filtering took {:?}", duration);
 
     println!("\nAnalyzing results...");
-    let mut correct_context: u32 = 0;
-    let mut false_context: u32 = 0;
-    for i in 0..states.len() {
-        if states[i].context == observations[i].context {
+    let (mut correct_context, mut false_context) = (0, 0);
+    for (state, observation) in states.iter().zip(observations.iter()) {
+        if state.context == observation.context {
             correct_context += 1;
         } else {
             false_context += 1;

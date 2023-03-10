@@ -31,13 +31,19 @@ pub struct AisRecord {
 }
 
 impl Observation {
-    pub fn from_csv(_filename: &str) -> Result<Vec<Observation>, csv::Error> {
+    pub fn from_csv(filename: &str) -> Result<Vec<Observation>, csv::Error> {
         let mut observations: Vec<Observation> = Vec::new();
 
-        let mut rdr = csv::Reader::from_path(_filename)?;
+        let mut rdr = csv::Reader::from_path(filename)?;
         for result in rdr.deserialize() {
             let record: AisRecord = result?;
-            let obs: Observation = Observation {
+            let context = match &*record.label {
+                "01-sailing" => ParticleContextType::GoFishing,
+                "02-fishing" => ParticleContextType::Fishing,
+                "03-sailing" => ParticleContextType::GoToPort,
+                _ => ParticleContextType::GoFishing, // Default case
+            };
+            let observation = Observation {
                 pos: Point {
                     x: record.x,
                     y: record.y,
@@ -45,17 +51,10 @@ impl Observation {
                 time: record.time_gap,
                 heading: record.bearing,
                 speed: record.euc_speed,
-                context: if record.label.contains("fishing") {
-                    ParticleContextType::Fishing
-                } else if record.label.contains("01-sailing") {
-                    ParticleContextType::GoFishing
-                } else {
-                    ParticleContextType::GoToPort
-                },
+                context,
             };
-            observations.push(obs);
+            observations.push(observation);
         }
-
         Ok(observations)
     }
 }
