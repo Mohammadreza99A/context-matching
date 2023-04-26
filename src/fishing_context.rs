@@ -82,7 +82,7 @@ impl FishingContext {
 
             // Write headers to the file
             let headers = format!(
-                "id,obs_ctx,{}",
+                "t,{}",
                 (1..=self.nb_of_particles)
                     .map(|i| format!("p_{}", i))
                     .collect::<Vec<_>>()
@@ -93,17 +93,23 @@ impl FishingContext {
                 .expect("failed to write to file");
 
             // Add initial particles to history
-            write!(writer, "\n{},{}", 0, self.observations[0].context).unwrap();
-            self.add_to_history(&mut writer);
+            write!(writer, "\n{}", 0).unwrap();
+            self.add_to_history(&mut writer, 0);
 
             // Apply particle filtering for all observations
             for i in 1..self.observations.len() {
                 self.particle_filter_steps(self.observations[i]);
 
                 // Add particles to history
-                write!(writer, "\n{},{}", i, self.observations[i].context).unwrap();
-                self.add_to_history(&mut writer);
-                writer.flush().expect("failed to flush buffer");
+                if i < 50
+                    || (i > (self.observations.len() / 2) - 100
+                        && i < (self.observations.len() / 2))
+                    || (i > self.observations.len() - 50 && i < self.observations.len())
+                {
+                    write!(writer, "\n{}", i).unwrap();
+                    self.add_to_history(&mut writer, i);
+                    writer.flush().expect("failed to flush buffer");
+                }
             }
 
             // Flush the buffer to ensure that any remaining data is written to the file
@@ -118,10 +124,16 @@ impl FishingContext {
         self.calc_optimal_sequence()
     }
 
-    fn add_to_history(&self, writer: &mut BufWriter<File>) {
-        for particle in &self.particles {
-            write!(writer, ",{}", particle.context).unwrap();
+    fn add_to_history(&self, writer: &mut BufWriter<File>, counter: usize) {
+        for i in 0..counter + 1 {
+            for particle in &self.particles {
+                write!(writer, ",{}", particle.memory[i]).unwrap();
+            }
+            if i != counter {
+                write!(writer, "\n{}", counter).unwrap();
+            }
         }
+        // write!(writer, "\n").unwrap();
     }
 
     fn particle_filter_steps(&mut self, observation: Observation) {
